@@ -135,12 +135,20 @@ function classPackage:preamble ()
 		output('/* function to release collected object via destructor */')
 		output('#ifdef __cplusplus\n')
 		for i,v in pairs(_collect) do
-		 output('\nstatic int '..v..' (lua_State* tolua_S)')
-			output('{')
-			output(' '..i..'* self = ('..i..'*) tolua_tousertype(tolua_S,1,0);')
-			output('	delete self;')
-			output('	return 0;')
-			output('}')
+            if i ~= _collect_custom_finalizers_index then
+
+            output('\nstatic int '..v..' (lua_State* tolua_S)')
+            output('{')
+            output(' '..i..'* self = ('..i..'*) tolua_tousertype(tolua_S,1,0);')
+            if _collect[_collect_custom_finalizers_index][i] then
+                output('  ' .. _collect[_collect_custom_finalizers_index][i] .. '(self);')
+            else
+                output('  delete self;')
+            end
+            output('	return 0;')
+            output('}')
+
+            end
 		end
 		output('#endif\n\n')
 	end
@@ -191,9 +199,9 @@ function classPackage:register (pre)
 	pop()
 end
 
---- 
+---
 -- LuaDoc Patch
--- outputs an empty(without documentation) LuaDoc interface 
+-- outputs an empty(without documentation) LuaDoc interface
 -- by klapeto (http://cegui.org.uk/forum/viewtopic.php?f=7&t=6784)
 function classPackage:output_luadoc()
 	local i=1
@@ -311,5 +319,3 @@ function Package (name,fn)
  pop()
  return t
 end
-
-

@@ -67,7 +67,8 @@ _basic_raw_push = {}
 _usertype = {}
 
 -- List of types that have to be collected
-_collect = {}
+_collect = {{}}
+_collect_custom_finalizers_index = 1
 
 -- List of types
 _global_types = {n=0}
@@ -371,10 +372,10 @@ function parser_hook(s)
 end
 
 
---- 
+---
 -- LuaDoc Patch
 -- takes a string of a C++ type and "cleanses it" by
--- removing const indentifiers, replacing template symbols <>, 
+-- removing const indentifiers, replacing template symbols <>,
 -- :: operators and converting C++ primitives to Lua primitives.
 -- returns the cleansed type or nil if the type is (void)
 -- by klapeto (http://cegui.org.uk/forum/viewtopic.php?f=7&t=6784)

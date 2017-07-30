@@ -386,16 +386,28 @@ function classDeclaration:freearray ()
  end
 end
 
+function classDeclaration:getparamstring ()
+  rettab = {}
+  local function append(...)
+    for _,v in ipairs(arg) do
+      rettab[#rettab + 1] = v
+    end
+  end
+  if self.ptr=='&' and not isbasic(self.type) then
+    append('*',self.name)
+  elseif self.ret=='*' then
+    append('&',self.name)
+  else
+    append(self.name)
+  end
+  return table.concat(rettab)
+end
+
 -- Pass parameter
 function classDeclaration:passpar ()
- if self.ptr=='&' and not isbasic(self.type) then
-  output('*'..self.name)
- elseif self.ret=='*' then
-  output('&'..self.name)
- else
-  output(self.name)
- end
+   output(self:getparamstring())
 end
+
 
 -- Return parameter value
 function classDeclaration:retvalue ()
@@ -564,4 +576,3 @@ function Declaration (s,kind,is_parameter)
  end
 
 end
-

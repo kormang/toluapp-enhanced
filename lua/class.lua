@@ -78,7 +78,10 @@ function classClass:requirecollection (t)
 	-- classes that export constructors need to have a collector (overrided by -D flag on command line)
 	if self._delete or ((not flags['D']) and self._new) then
 		--t[self.type] = "tolua_collect_" .. gsub(self.type,"::","_")
-		t[self.type] = "tolua_collect_" .. clean_template(self.type)
+        t[self.type] = "tolua_collect_" .. clean_template(self.type)
+        if self.custom_finalizer then
+          t[_collect_custom_finalizers_index][self.type] = self.custom_finalizer
+        end
 		r = true
 	end
  return r
@@ -121,9 +124,9 @@ function classClass:print (ident,close)
  print(ident.."}"..close)
 end
 
---- 
+---
 -- LuaDoc Patch
--- outputs an empty(without documentation) LuaDoc interface 
+-- outputs an empty(without documentation) LuaDoc interface
 -- by klapeto (http://cegui.org.uk/forum/viewtopic.php?f=7&t=6784)
 function classClass:output_luadoc()
 
@@ -250,4 +253,3 @@ function Class (n,p,b)
 	c:parse(strsub(b,2,strlen(b)-1)) -- eliminate braces
 	pop()
 end
-

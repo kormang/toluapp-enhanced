@@ -38,7 +38,7 @@ The return values can by any of the following:
 
 In case no return values are specified, it will default to: 'nil, message'.
 
-Example 1: 
+Example 1:
 ----------
 Returns 'nil, false' for all exceptions:
 
@@ -56,3 +56,25 @@ If a CEGUI::Exception is thrown, return 'nil, message'.
 If any other kind of exception is thrown abort (error).
 
 	tolua_throws|CEGUI::Exception|any,error|
+
+*********************************************
+* Renaming destructor / custom collectors : *
+*********************************************
+We can make tolua call different function, other than destructor,
+when object:delete() is called from lua, or object is being collected by GC.
+
+instead of:
+
+	~Class();
+
+in .pkg file we can put this:
+
+	tolua_outside void ~Class @ SomeCustomCollector();
+
+So in collector and delete function tolua will generate:
+
+	SomeCustomCollector(self);
+
+instead of:
+
+	delete self;

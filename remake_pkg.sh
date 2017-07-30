@@ -1,2 +1,2 @@
 #!/bin/sh
-tolua++ -H toluabind.h -o toluabind.c -n tolua tolua_scons.pkg
+./toluapp -H toluabind.h -o toluabind.c -n tolua tolua_scons.pkg

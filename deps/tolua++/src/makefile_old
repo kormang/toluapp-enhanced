@@ -1,0 +1,31 @@
+include $(BUILD_MAKE)/environnement.mak
+
+# ****************************************
+# Define module name
+# ****************************************
+MODULE  = toluapp
+
+CFLAGS += -DTOLUA_STATIC
+
+SRCS = tolua_event.c tolua_is.c tolua_map.c tolua_push.c tolua_to.c
+
+DIR_INCLUDE = $(INCLUDE_PREFIX)$(TOLUAPP_INCLUDE) $(INCLUDE_PREFIX)$(LUA_INCLUDE)
+
+LIBOBJS = $(SRCS:.c=.o)
+
+# ****************************************
+# This define the default command for gmake
+# ****************************************
+all: $(LIB_PREFFIX)$(MODULE).$(LIB_SUFFIX) copy_to_lib_dir
+
+copy_to_lib_dir:
+	$(CP) $(subst $(BAD_SLASH),$(GOOD_SLASH),$(BUILD_ROOT)/bin/$(LIB_PREFFIX)$(MODULE).$(LIB_SUFFIX)) $(subst $(BAD_SLASH),$(GOOD_SLASH),$(TOLUAPP_LIB))
+	$(RM) $(subst $(BAD_SLASH),$(GOOD_SLASH),$(BUILD_ROOT)/bin/$(LIB_PREFFIX)$(MODULE).$(LIB_SUFFIX))
+
+clean:
+	$(RM) *.o *~ $(LIB_PREFFIX)$(MODULE).$(LIB_SUFFIX)
+
+# ****************************************
+# Always include crules.mak
+# ****************************************
+include $(BUILD_MAKE)/crules.mak

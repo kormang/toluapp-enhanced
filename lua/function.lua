@@ -322,7 +322,11 @@ function classFunction:supcode (local_constructor)
 
  -- call function
  if class and self.name=='delete' then
-  output('  delete self;')
+   if self.custom_finalizer then
+       output('  ' .. self.custom_finalizer .. '(self);')
+   else
+       output('  delete self;')
+   end
  elseif class and self.name == 'operator&[]' then
   if flags['1'] then -- for compatibility with tolua5 ?
 	output('  self->operator[](',self.args[1].name,'-1) = ',self.args[2].name,';')
@@ -343,91 +347,123 @@ function classFunction:supcode (local_constructor)
     output("try\n")
   end
   -- CEGUILua mod end - throws
+  local function createLoutput()
+    local obj = {
+      storage = {},
+      call = function(self, ...)
+        for _, v in ipairs(arg) do
+          self.storage[#self.storage + 1] = v
+        end
+      end,
+      tostring = function(self) return table.concat(self.storage) end,
+      reset = function(self) self.storage = {} end
+    }
+    local mt = {
+      __call = function(t, ...)return t:call(unpack(arg)) end,
+      __tostring = function(t) return t:tostring() end
+    }
+    setmetatable(obj, mt)
+    return obj
+  end
+
+  local loutput = createLoutput()
+
+  local full_typename = self.mod .. ' ' .. self.type .. self.ptr
+  local tolua_ret = false
   output('  {')
   if self.type ~= '' and self.type ~= 'void' then
-   output('  ',self.mod,self.type,self.ptr,'tolua_ret = ')
-   output('(',self.mod,self.type,self.ptr,') ')
+    tolua_ret = true
+   loutput('((',full_typename,') ')
   else
-   output('  ')
+   loutput('  ')
   end
+
+  -- generate call expression
   if class and self.name=='new' then
-   output('new',self.type,'(')
+   loutput('new ',self.type,'(')
   elseif class and static then
-	if out then
-		output(self.name,'(')
-	else
-		output(class..'::'..self.name,'(')
-	end
+  	if out then
+  		loutput(self.name,'(')
+  	else
+  		loutput(class..'::'..self.name,'(')
+  	end
   elseif class then
-	if out then
-		output(self.name,'(')
-	else
-	  if self.cast_operator then
-	  	output('static_cast<',self.mod,self.type,self.ptr,'>(*self')
-	  else
-		output('self->'..self.name,'(')
-	  end
-	end
+  	if out then
+  		loutput(self.name,'(')
+  	else
+  	  if self.cast_operator then
+            loutput('static_cast<',full_typename,'>(*self')
+  	  else
+            loutput('self->'..self.name,'(')
+  	  end
+  	end
   else
-   output(self.name,'(')
+   loutput(self.name,'(')
   end
 
   if out and not static then
-  	output('self')
-	if self.args[1] and self.args[1].name ~= '' then
-		output(',')
-	end
+  	loutput('self')
+  	if self.args[1] and self.args[1].name ~= '' then
+  		loutput(',')
+  	end
   end
   -- write parameters
   local i=1
   while self.args[i] do
-   self.args[i]:passpar()
+   loutput(self.args[i]:getparamstring())
    i = i+1
    if self.args[i] then
-    output(',')
+    loutput(',')
    end
   end
 
   if class and self.name == 'operator[]' and flags['1'] then
-	output('-1);')
+	   loutput('-1)')
   else
-	output(');')
+	   loutput(')')
   end
-
+  if tolua_ret then
+    loutput(')')
+  end
+  local call_expression = tostring(loutput)
   -- return values
   if self.type ~= '' and self.type ~= 'void' then
    nret = nret + 1
    local t,ct = isbasic(self.type)
    if t then
    	if self.cast_operator and _basic_raw_push[t] then
-		output('   ',_basic_raw_push[t],'(tolua_S,(',ct,')tolua_ret);')
+		    output('   ',_basic_raw_push[t],'(tolua_S,(',ct,')',call_expression,');')
    	else
-	    output('   tolua_push'..t..'(tolua_S,(',ct,')tolua_ret);')
-	end
+	    output('   tolua_push'..t..'(tolua_S,(',ct,')',call_expression,');')
+    end
    else
 			 t = self.type
 			 new_t = string.gsub(t, "const%s+", "")
     if self.ptr == '' then
      output('   {')
      output('#ifdef __cplusplus\n')
-     output('    void* tolua_obj = new',new_t,'(tolua_ret);')
+     output('    void* const tolua_obj = new',new_t,'(', call_expression, ');')
      output('    tolua_pushusertype_and_takeownership(tolua_S,tolua_obj,"',t,'");')
      output('#else\n')
-     output('    void* tolua_obj = tolua_copy(tolua_S,(void*)&tolua_ret,sizeof(',t,'));')
+     output( t, '* const tolua_obj = tolua_allocate_object(tolua_S,sizeof(', call_expression, '));')
+     output('    *tolua_obj = ', call_expression, ';')
      output('    tolua_pushusertype_and_takeownership(tolua_S,tolua_obj,"',t,'");')
      output('#endif\n')
      output('   }')
     elseif self.ptr == '&' then
-     output('   tolua_pushusertype(tolua_S,(void*)&tolua_ret,"',t,'");')
+     output('   tolua_pushusertype(tolua_S,(void*)&', call_expression, ',"',t,'");')
     else
     	if local_constructor then
-	  output('   tolua_pushusertype_and_takeownership(tolua_S,(void *)tolua_ret,"',t,'");')
+	       output('   tolua_pushusertype_and_takeownership(tolua_S,(void *)', call_expression, ',"',t,'");')
     	else
-		     output('   tolua_pushusertype(tolua_S,(void*)tolua_ret,"',t,'");')
+		     output('   tolua_pushusertype(tolua_S,(void*)', call_expression, ',"',t,'");')
 	    end
     end
    end
+  else
+    output(call_expression, ';')
   end
+
   local i=1
   while self.args[i] do
    nret = nret + self.args[i]:retvalue()
@@ -517,9 +553,9 @@ function classFunction:register (pre)
   end
 end
 
---- 
+---
 -- LuaDoc Patch
--- outputs an empty(without documentation) LuaDoc interface 
+-- outputs an empty(without documentation) LuaDoc interface
 -- by klapeto (http://cegui.org.uk/forum/viewtopic.php?f=7&t=6784)
 function classFunction:output_luadoc()
 	if not self:check_public_access() then
@@ -542,7 +578,7 @@ function classFunction:output_luadoc()
 		if (pType~=nil) then
 			output('-- @param #'..pType..' '..self.args[i].name..'\n')
 		end
-		
+
 		i = i+1
 	end
 
@@ -606,8 +642,9 @@ function classFunction:requirecollection (t)
 	local r = false
 	if self.type ~= '' and not isbasic(self.type) and self.ptr=='' then
 		local type = gsub(self.type,"%s*const%s+","")
-	 t[type] = "tolua_collect_" .. clean_template(type)
-	 r = true
+    t[type] = "tolua_collect_" .. clean_template(type)
+
+	  r = true
 	end
 	local i=1
 	while self.args[i] do
@@ -679,14 +716,20 @@ function _Function (t)
 
  append(t)
  if t:inclass() then
- --print ('t.name is '..t.name..', parent.name is '..t.parent.name)
+
+--print ('t.name is '..t.name..', parent.name is '..t.parent.name)
+
   if string.gsub(t.name, "%b<>", "") == string.gsub(t.parent.original_name or t.parent.name, "%b<>", "") then
    t.name = 'new'
    t.lname = 'new'
    t.parent._new = true
    t.type = t.parent.name
    t.ptr = '*'
-  elseif string.gsub(t.name, "%b<>", "") == '~'..string.gsub(t.parent.original_name or t.parent.name, "%b<>", "") then
+ elseif string.gsub(t.name, "%b<>", "") == '~'..string.gsub(t.parent.original_name or t.parent.name, "%b<>", "") then
+   if t.lname ~= t.name then
+     t.parent.custom_finalizer = t.lname
+     t.custom_finalizer = t.lname
+   end
    t.name = 'delete'
    t.lname = 'delete'
    t.parent._delete = true
@@ -796,5 +839,3 @@ function strip_defaults(s)
 
 	return "("..ret..")"
 end
-
-
