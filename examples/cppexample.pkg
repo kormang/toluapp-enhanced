@@ -1,0 +1,27 @@
+$#include "cppexample.h"
+$#include "required.h"
+/*
+ Small example with two classes to
+ demonstrating additions to tolua++ code generator.
+*/
+
+class KlassA;
+
+void deleteKlassA(KlassA* klassA);
+
+class KlassA
+{
+  int getSomeInt();
+  // in generated code you can observe that it does
+  // not call delete operator on KlassA's object.
+  // Instread, it calls deleteKlassA to take care of it.
+  tolua_outside void ~KlassA @ deleteKlassA();
+};
+
+class KlassB
+{
+  // in generated binding code you can observe
+  // optimized returning value from native code to Lua,
+  // and exception handling too.
+  tolua_throws|std::exception,nil,message| KlassA createKlassA(int param);
+};

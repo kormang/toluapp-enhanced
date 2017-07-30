@@ -1,0 +1,16 @@
+$#include "cexample.h"
+$#include "required.h"
+
+struct structA
+{
+  int a;
+  int b;
+
+  //
+};
+
+// Does not return pointer for demonstration
+// of optimized returning of values.
+structA createStructA();
+
+void freeStructA(structA* sA);
