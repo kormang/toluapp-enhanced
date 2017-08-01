@@ -21,7 +21,6 @@
 #include <stdlib.h>
 #include <math.h>
 
-
 /* Create metatable
 	* Create and register new metatable
 */
@@ -188,16 +187,14 @@ static int tolua_bnd_releaseownership (lua_State* L)
 		#else
 		lua_setgcthreshold(L,0);
 		#endif
-		lua_pushstring(L,"tolua_gc");
-		lua_rawget(L,LUA_REGISTRYINDEX);
-		lua_pushlightuserdata(L,u);
-		lua_rawget(L,-2);
+		lua_pushstring(L, "__tolua_gc_mt");
+		lua_gettable(L, 1);
 		lua_getmetatable(L,1);
 		if (lua_rawequal(L,-1,-2))  /* check that we are releasing the correct type */
 		{
-			lua_pushlightuserdata(L,u);
+			lua_pushstring(L, "__tolua_gc_mt");
 			lua_pushnil(L);
-			lua_rawset(L,-5);
+			lua_settable(L,1);
 			done = 1;
 		}
 	}
@@ -220,8 +217,17 @@ static int tolua_bnd_cast (lua_State* L)
         return 1;
 */
 
+
 	void* v;
 	const char* s;
+	int owned;
+
+	lua_pushstring(L, "__tolua_gc_mt");
+	lua_gettable(L,1);
+
+	owned = !lua_isnil(L, -1);
+	lua_pop(L, 1);
+
 	if (lua_islightuserdata(L, 1)) {
 		v = tolua_touserdata(L, 1, NULL);
 	} else {
@@ -229,10 +235,14 @@ static int tolua_bnd_cast (lua_State* L)
 	};
 
 	s = tolua_tostring(L,2,NULL);
-	if (v && s)
-	 tolua_pushusertype(L,v,s);
-	else
+	if (v && s) {
+		tolua_pushusertype(L,v,s);
+		if (owned) {
+			tolua_register_gc(L, lua_gettop(L));
+		}
+	} else {
 	 lua_pushnil(L);
+	}
 	return 1;
 }
 
@@ -257,13 +267,17 @@ static int tolua_bnd_setpeer(lua_State* L) {
 		lua_pushstring(L, "Invalid argument #1 to setpeer: userdata expected.");
 		lua_error(L);
 	};
-	
+
 	if (lua_isnil(L, -1)) {
 
 		lua_pop(L, 1);
 		lua_pushvalue(L, TOLUA_NOPEER);
 	};
-	lua_setfenv(L, -2);
+	#if LUA_VERSION_NUM > 501
+	       lua_setuservalue(L, -2);
+	#else
+	        lua_setfenv(L, -2);
+	#endif
 
 	return 0;
 };
@@ -271,7 +285,11 @@ static int tolua_bnd_setpeer(lua_State* L) {
 static int tolua_bnd_getpeer(lua_State* L) {
 
 	/* stack: userdata */
-	lua_getfenv(L, -1);
+	#if LUA_VERSION_NUM > 501
+	       lua_getuservalue(L, -2);
+	#else
+	        lua_getfenv(L, -1);
+	#endif
 	if (lua_rawequal(L, -1, TOLUA_NOPEER)) {
 		lua_pop(L, 1);
 		lua_pushnil(L);
@@ -354,6 +372,17 @@ TOLUA_API void* tolua_copy (lua_State* L, void* value, unsigned int size)
 	return clone;
 }
 
+/* Allocate space for a C object
+*/
+TOLUA_API void* tolua_allocate_object (lua_State* L, unsigned int size)
+{
+    void* clone = (void*)malloc(size);
+    if (!clone)
+        tolua_error(L,"insuficient memory",NULL);
+
+    return clone;
+}
+
 /* Default collect function
 */
 TOLUA_API int tolua_default_collect (lua_State* tolua_S)
@@ -369,19 +398,21 @@ TOLUA_API int tolua_register_gc (lua_State* L, int lo)
 {
  int success = 1;
  void *value = *(void **)lua_touserdata(L,lo);
- lua_pushstring(L,"tolua_gc");
- lua_rawget(L,LUA_REGISTRYINDEX);
-	lua_pushlightuserdata(L,value);
-	lua_rawget(L,-2);
+	lua_pushstring(L, "__tolua_gc_mt");
+	lua_gettable(L, lo);
+
 	if (!lua_isnil(L,-1)) /* make sure that object is not already owned */
 		success = 0;
 	else
 	{
-		lua_pushlightuserdata(L,value);
-		lua_getmetatable(L,lo);
-		lua_rawset(L,-4);
+
+		lua_pushstring(L, "__tolua_gc_mt");
+		lua_getmetatable(L, lo);
+		lua_settable(L, lo);
+
 	}
-	lua_pop(L,2);
+	lua_pop(L,1);
+
 	return success;
 }
 
@@ -411,7 +442,11 @@ TOLUA_API void tolua_beginmodule (lua_State* L, const char* name)
 		lua_rawget(L,-2);
 	}
 	else
-	 lua_pushvalue(L,LUA_GLOBALSINDEX);
+	#if LUA_VERSION_NUM > 501
+       lua_pushglobaltable(L);
+  #else
+				lua_pushvalue(L,LUA_GLOBALSINDEX);
+  #endif
 }
 
 /* End module
@@ -436,16 +471,20 @@ TOLUA_API void tolua_module (lua_State* L, const char* name, int hasvar)
 		if (!lua_istable(L,-1))  /* check if module already exists */
 		{
 			lua_pop(L,1);
-		 lua_newtable(L);
-		 lua_pushstring(L,name);
+			lua_newtable(L);
+			lua_pushstring(L,name);
 			lua_pushvalue(L,-2);
-		 lua_rawset(L,-4);       /* assing module into module */
+			lua_rawset(L,-4);       /* assing module into module */
 		}
 	}
 	else
 	{
 		/* global table */
-		lua_pushvalue(L,LUA_GLOBALSINDEX);
+		#if LUA_VERSION_NUM > 501
+			lua_pushglobaltable(L);
+		#else
+			lua_pushvalue(L,LUA_GLOBALSINDEX);
+		#endif
 	}
 	if (hasvar)
 	{
@@ -473,7 +512,11 @@ TOLUA_API void tolua_module (lua_State* L, const char* name, int hasvar)
 	else
 	{
 		/* global table */
-		lua_pushvalue(L,LUA_GLOBALSINDEX);
+		#if LUA_VERSION_NUM > 501
+               lua_pushglobaltable(L);
+	  #else
+                lua_pushvalue(L,LUA_GLOBALSINDEX);
+		#endif
 	}
 	if (hasvar)
 	{
@@ -532,7 +575,7 @@ TOLUA_API void tolua_cclass (lua_State* L, const char* lname, const char* name, 
 	mapsuper(L,name,base);
 
 	lua_pushstring(L,lname);
-	
+
 	push_collector(L, name, col);
 	/*
 	luaL_getmetatable(L,name);
@@ -541,7 +584,7 @@ TOLUA_API void tolua_cclass (lua_State* L, const char* lname, const char* name, 
 
 	lua_rawset(L,-3);
 	*/
-	
+
 	luaL_getmetatable(L,name);
 	lua_rawset(L,-3);              /* assign class metatable to module */
 
@@ -555,7 +598,7 @@ TOLUA_API void tolua_cclass (lua_State* L, const char* lname, const char* name, 
 	lua_rawset(L,-3);
 	lua_pop(L,1);
 	*/
-	
+
 
 }
 
@@ -701,4 +744,3 @@ TOLUA_API void tolua_dobuffer(lua_State* L, char* B, unsigned int size, const ch
  lua_dobuffer(L, B, size, name);
  #endif
 };
-
